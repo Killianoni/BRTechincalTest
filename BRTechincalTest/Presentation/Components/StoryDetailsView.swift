@@ -59,24 +59,23 @@ struct StoryDetailView: View {
                 }
                 .padding(.horizontal, 16)
 
-                GeometryReader { geometry in
-                    if currentImageIndex < currentStory.imageURL.count {
-                        AsyncImage(url: URL(string: currentStory.imageURL[currentImageIndex])) { image in
-                            image.resizable().scaledToFill().frame(maxWidth: .infinity, maxHeight: .infinity).clipped().onAppear { startTimer() }
-                        } placeholder: {
-                            ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white)).frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
+                TabView(selection: $currentImageIndex) {
+                    ForEach(Array(currentStory.imageURL.enumerated()), id: \.offset) { index, urlString in
+                        CachedAsyncImage(url: URL(string: urlString))
+                            .tag(index)
                     }
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
                 .overlay(
-                    Group {
-                        if showLikeAnimation {
-                            Image(systemName: "heart.fill").font(.system(size: 80)).foregroundColor(.white).scaleEffect(showLikeAnimation ? 1.2 : 0.5).animation(.spring(), value: showLikeAnimation)
-                        }
+                    HStack(spacing: 0) {
+                        Rectangle().fill(.white.opacity(0.001))
+                            .onTapGesture { handleTap(isLeft: true) }
+                        Rectangle().fill(.white.opacity(0.001))
+                            .onTapGesture(count: 2) { toggleLike() }
+                        Rectangle().fill(.white.opacity(0.001))
+                            .onTapGesture { handleTap(isLeft: false) }
                     }
                 )
-                .onTapGesture(count: 2) { toggleLike() }
-                .onTapGesture(count: 1) { location in handleTap(at: location, in: UIScreen.main.bounds.width) }
 
                 HStack {
                     Button(action: toggleLike) {
@@ -85,21 +84,59 @@ struct StoryDetailView: View {
                             .foregroundColor(currentStory.isLiked ? .pink : .white)
                     }
                     Spacer()
+                    Text("\(currentImageIndex + 1) / \(allStories.count)").foregroundColor(.white.opacity(0.7)).font(.system(size: 14))
                 }
                 .padding(.horizontal, 20).padding(.bottom, 30)
             }
         }
-        .onAppear { onMarkSeen(currentStory.storyID) }
+        .onAppear {
+            onMarkSeen(currentStory.storyID)
+            currentStory.isSeen = true
+            startTimer()
+        }
         .onDisappear { stopTimer() }
+        .onChange(of: currentImageIndex) {
+            startTimer()
+            prefetchAdjacentImages()
+        }
+        .onChange(of: currentStory.id) {
+            currentImageIndex = 0
+        }
     }
 
     //MARK: Private methods
+    private func prefetchAdjacentImages() {
+        let urls = currentStory.imageURL
+
+        let nextIndex = currentImageIndex + 1
+        if nextIndex < urls.count, let nextUrl = URL(string: urls[nextIndex]) {
+            Task {
+                _ = await ImageLoader.shared.loadImage(from: nextUrl)
+            }
+        }
+
+        let prevIndex = currentImageIndex - 1
+        if prevIndex >= 0, let prevUrl = URL(string: urls[prevIndex]) {
+            Task { _ = await ImageLoader.shared.loadImage(from: prevUrl) }
+        }
+    }
+
     private func startTimer() {
         stopTimer()
-        timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in nextImage() }
+        timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in
+            nextImage()
+        }
     }
 
     private func stopTimer() { timer?.invalidate(); timer = nil }
+
+    private func handleTap(isLeft: Bool) {
+        if isLeft {
+            previousImage()
+        } else {
+            nextImage()
+        }
+    }
 
     private func nextImage() {
         if currentImageIndex < currentStory.imageURL.count - 1 {
@@ -109,10 +146,17 @@ struct StoryDetailView: View {
         }
     }
 
+    private func previousImage() {
+        if currentImageIndex > 0 {
+            currentImageIndex -= 1
+        } else {
+            previousStory()
+        }
+    }
+
     private func nextStory() {
         if currentStoryIndex < allStories.count - 1 {
             currentStory = allStories[currentStoryIndex + 1]
-            currentImageIndex = 0
         } else {
             dismiss()
         }
@@ -122,14 +166,6 @@ struct StoryDetailView: View {
         if currentStoryIndex > 0 {
             currentStory = allStories[currentStoryIndex - 1]
             currentImageIndex = currentStory.imageURL.count - 1
-        }
-    }
-
-    private func handleTap(at location: CGPoint, in screenWidth: CGFloat) {
-        if location.x < screenWidth / 3 {
-            if currentImageIndex > 0 { currentImageIndex -= 1 } else { previousStory() }
-        } else if location.x > screenWidth * 2/3 {
-            nextImage()
         }
     }
 
