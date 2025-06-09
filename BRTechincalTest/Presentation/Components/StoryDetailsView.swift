@@ -84,7 +84,6 @@ struct StoryDetailView: View {
                             .foregroundColor(currentStory.isLiked ? .pink : .white)
                     }
                     Spacer()
-                    Text("\(currentImageIndex + 1) / \(allStories.count)").foregroundColor(.white.opacity(0.7)).font(.system(size: 14))
                 }
                 .padding(.horizontal, 20).padding(.bottom, 30)
             }
